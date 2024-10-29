@@ -1,0 +1,69 @@
+package com.alejandroLopez.UTILS;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Bean;
+import org.springframework.mail.SimpleMailMessage;
+import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.JavaMailSenderImpl;
+import org.springframework.stereotype.Service;
+
+import java.util.Properties;
+import java.util.UUID;
+
+@Service
+public class EmailService {
+
+    private final JavaMailSender mailSender;
+    @Autowired
+    private JavaMailSender emailSender;
+    @Autowired
+    public EmailService(JavaMailSender mailSender) {
+        this.mailSender = mailSender;
+    }
+
+    public void sendConfirmationEmail(String to, String clientName) {
+        String token = generateToken(); // Generar un token de confirmación único
+        String confirmationLink = "http://localhost:8080/clients/confirm?email=" + to + "&token=" + token;
+
+        SimpleMailMessage message = new SimpleMailMessage();
+        message.setTo(to);
+        message.setSubject("Confirmación de Acceso a sus Coches");
+        message.setText("Estimado " + clientName + ",\n\nPor favor confirme su acceso a los datos de sus coches usando el siguiente enlace: "
+                + confirmationLink + "\n\nSaludos,\nSu Empresa");
+        emailSender.send(message);
+
+        // Aquí podrías guardar el token en la base de datos o en una caché asociada al cliente
+    }
+
+    private String generateToken() {
+        // Generar un token aleatorio (puedes usar UUID o cualquier otro método)
+        return UUID.randomUUID().toString();
+    }
+    @Bean
+    public JavaMailSender getJavaMailSender() {
+        JavaMailSenderImpl mailSender = new JavaMailSenderImpl();
+        mailSender.setHost("smtp.gmail.com");
+        mailSender.setPort(587);
+
+        mailSender.setUsername("tu_email@gmail.com");
+        mailSender.setPassword("tu_contraseña"); // Usa la contraseña de la aplicación si tienes 2FA habilitada
+
+        Properties props = mailSender.getJavaMailProperties();
+        props.put("mail.transport.protocol", "smtp");
+        props.put("mail.smtp.auth", "true");
+        props.put("mail.smtp.starttls.enable", "true");
+        props.put("mail.debug", "true");
+
+        return mailSender;
+    }
+    public void sendConfirmationEmail(String toEmail) {
+        SimpleMailMessage message = new SimpleMailMessage();
+        message.setTo(toEmail);
+        message.setSubject("Confirmación de Solicitud");
+        message.setText("Gracias por tu solicitud. Nos pondremos en contacto contigo pronto.");
+        message.setFrom("tu_email@gmail.com"); // Cambia esto a tu dirección de correo
+
+        mailSender.send(message);
+    }
+
+}

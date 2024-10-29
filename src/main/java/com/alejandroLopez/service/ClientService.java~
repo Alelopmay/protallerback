@@ -1,0 +1,141 @@
+package com.alejandroLopez.service;
+
+import com.alejandroLopez.model.Car;
+import com.alejandroLopez.model.Client;
+import com.alejandroLopez.model.CompanyClient;
+import com.alejandroLopez.repository.ClientRepository;
+import com.alejandroLopez.repository.CompanyClientRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.util.*;
+
+@Service
+public class ClientService {
+
+    @Autowired
+    private ClientRepository clientRepository;
+
+    @Autowired
+    private CompanyService companyService;  // Servicio de la empresa inyectado
+
+    @Autowired
+    private CompanyClientRepository companyClientRepository;
+
+    // Almacena tokens por email para la confirmación
+    private Map<String, String> tokenStorage = new HashMap<>();
+
+    // Obtener todos los clientes
+    public List<Client> getAllClients() {
+        return clientRepository.findAll();
+    }
+
+    // Obtener cliente por ID
+    public Optional<Client> getClientById(Long id) {
+        return clientRepository.findById(id);
+    }
+
+    // Crear un nuevo cliente
+    public Client createClient(Client client) {
+        return clientRepository.save(client);
+    }
+
+    // Actualizar cliente
+    public Client updateClient(Long id, Client clientDetails) {
+        Client client = clientRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Cliente no encontrado"));
+        client.setName(clientDetails.getName());
+        client.setPhoneNumber(clientDetails.getPhoneNumber());
+        client.setEmail(clientDetails.getEmail());
+        return clientRepository.save(client);
+    }
+
+    // Eliminar cliente
+    public void deleteClient(Long id) {
+        clientRepository.deleteById(id);
+    }
+
+    // Obtener todos los clientes asociados a un empleado
+    public List<Client> getAllClientsByEmployeeId(Long employeeId) {
+        return clientRepository.findAllClientsByEmployeeId(employeeId);
+    }
+
+    // Crear o vincular un cliente a una empresa
+    public Client createOrLinkClient(Client client, Long employeeId) {
+        // 1. Verificar si el cliente ya existe por su email y teléfono
+        Optional<Client> existingClientOpt = clientRepository.findClientByPhoneNumberAndEmail(client.getPhoneNumber(), client.getEmail());
+
+        if (existingClientOpt.isPresent()) {
+            // El cliente ya existe, verificamos si ya tiene una relación con la empresa
+            Client existingClient = existingClientOpt.get();
+            Optional<Long> companyIdOpt = companyService.getCompanyIdByEmployeeId(employeeId);
+
+            if (companyIdOpt.isPresent()) {
+                Long companyId = companyIdOpt.get();
+                boolean alreadyRelated = companyClientRepository.existsByClientIdAndCompanyId(existingClient.getId(), companyId);
+
+                if (alreadyRelated) {
+                    // Si ya está relacionado, lanzar excepción o manejar de otra forma
+                    throw new RuntimeException("El cliente ya está asociado a la empresa.");
+                } else {
+                    // Si no está relacionado, crear la relación N:M
+                    CompanyClient companyClient = new CompanyClient(existingClient.getId(), companyId);
+                    companyClientRepository.save(companyClient);
+                    System.out.println("Relación N:M creada entre Cliente ID: " + existingClient.getId() + " y Empresa ID: " + companyId);
+                    return existingClient;  // Retornamos el cliente existente
+                }
+            } else {
+                throw new RuntimeException("No se encontró ninguna empresa asociada con el ID de empleado: " + employeeId);
+            }
+
+        } else {
+            // El cliente no existe, lo creamos
+            Client createdClient = clientRepository.save(client);
+
+            // Crear la relación N:M entre cliente y empresa
+            createClientCompanyRelation(createdClient.getId(), employeeId);
+            return createdClient;
+        }
+    }
+
+    // Crear la relación N:M entre cliente y empresa
+    public void createClientCompanyRelation(Long clientId, Long employeeId) {
+        Optional<Long> companyIdOpt = companyService.getCompanyIdByEmployeeId(employeeId);
+
+        if (companyIdOpt.isPresent()) {
+            Long companyId = companyIdOpt.get();
+            CompanyClient companyClient = new CompanyClient(clientId, companyId);
+            companyClientRepository.save(companyClient);
+            System.out.println("Relación N:M creada entre Cliente ID: " + clientId + " y Empresa ID: " + companyId);
+        } else {
+            throw new RuntimeException("No se encontró ninguna empresa asociada con el ID de empleado: " + employeeId);
+        }
+    }
+
+    // Verificar el token de confirmación
+    public boolean verifyConfirmationToken(String email, String token) {
+        return tokenStorage.containsKey(email) && tokenStorage.get(email).equals(token);
+    }
+
+    // Obtener coches del cliente basado en su número de teléfono y correo electrónico
+    public List<Car> getCarsByClientPhoneNumberAndEmail(String phoneNumber, String email) {
+        return clientRepository.findAllCarsByClientPhoneNumberAndEmail(phoneNumber, email);
+    }
+
+    // Crear un token de confirmación y enviarlo por correo
+    public String createAndSendConfirmationToken(String email) {
+        // Generar un token (por ejemplo, UUID)
+        String token = UUID.randomUUID().toString();
+        tokenStorage.put(email, token);
+
+        // Enviar el token por correo electrónico
+        // emailService.sendConfirmationEmail(email, token); // Método para enviar el email
+
+        return token;  // Devolver el token (opcional)
+    }
+
+    // Eliminar un cliente basado en su ID
+    public void deleteClientById(Long clientId) {
+        clientRepository.deleteById(clientId);
+    }
+}
